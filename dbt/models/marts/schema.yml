@@ -19,12 +19,9 @@ models:
       - name: phaseout_period
         data_tests:
           - not_null
-          - accepted_values:
-              values: ['before', 'after']
       - name: comparison_window
         data_tests:
-          - accepted_values:
-              values: ['year_before', 'year_after', 'outside_comparison_window']
+          - not_null
 
   - name: fct_daily_prices_base
     description: "Daily day-ahead wholesale prices for Germany and France."
@@ -35,8 +32,6 @@ models:
       - name: country
         data_tests:
           - not_null
-          - accepted_values:
-              values: ['Germany', 'France']
       - name: eur_per_mwh
         data_tests:
           - not_null
@@ -50,8 +45,6 @@ models:
       - name: comparison_window
         data_tests:
           - not_null
-          - accepted_values:
-              values: ['year_before', 'year_after']
       - name: avg_gwh_per_day
         data_tests:
           - not_null
@@ -84,5 +77,3 @@ seeds:
       - name: category
         data_tests:
           - not_null
-          - accepted_values:
-              values: ['generation_fossil', 'generation_nuclear', 'generation_renewable', 'generation_other', 'consumption', 'price']

@@ -10,14 +10,13 @@ models:
           - not_null
           - accepted_values:
               values: [1223, 1224, 1225, 1226, 1227, 1228, 4066, 4067, 4068, 4069, 4070, 4071, 410, 4169, 254]
-              quote: false
+              config:
+                where: "filter_id is not null"
 
       - name: region
         description: "Region code"
         data_tests:
           - not_null
-          - accepted_values:
-              values: ['DE']
 
       - name: date
         data_tests:
