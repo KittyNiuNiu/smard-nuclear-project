@@ -2,10 +2,11 @@
   config(
     materialized           = 'table',
     partition_by           = {'field': 'date', 'data_type': 'date', 'granularity': 'day'},
-    cluster_by             = ['region'],
+    cluster_by             = ['filter_id'],
     description            = '''
-      Daily day-ahead wholesale prices for Germany/Luxembourg and France.
-      Partitioned by date, clustered by region.
+      Daily day-ahead wholesale prices for Germany and France.
+      Partitioned by date, clustered by filter_id.
+      Both filters use region DE — country is derived from filter_id.
     '''
   )
 }}
@@ -15,7 +16,7 @@ select
     df.filter_name_en                   as price_area,
     case ts.filter_id
         when 4169 then 'Germany'
-        when 254 then 'France'
+        when 254  then 'France'
     end                                 as country,
     ts.date,
     ts.year,
