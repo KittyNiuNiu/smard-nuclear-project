@@ -15,8 +15,8 @@ Note: filterCopy and regionCopy must equal filter and region — this is
 documented as "Kaputtes API-Design" (broken API design) by the API maintainers.
 
 Usage:
-    python fetch_smard.py --filter 1224 --region DE --start 2022-01-01 --end 2024-12-31
-    python fetch_smard.py --all-filters --start 2022-01-01 --end 2024-12-31
+    python fetch_smard.py --filter 1224 --region DE --start 2022-01-01 --end 2026-04-19
+    python fetch_smard.py --all-filters --start 2022-01-01 --end 2026-04-19
 
 Environment:
     GOOGLE_APPLICATION_CREDENTIALS  path to service account JSON
@@ -213,8 +213,6 @@ def main() -> int:
         log.error("GCS_BUCKET env var required unless --local-only or --dry-run")
         return 2
 
-    # For price filter 254 (France), region must be FR
-    region_overrides = {254: "FR"}
 
     session = requests.Session()
     # SMARD's WAF blocks simple User-Agents with 403, use a browser-like one
@@ -227,7 +225,7 @@ def main() -> int:
 
     total_records = 0
     for fid in filter_ids:
-        region = region_overrides.get(fid, args.region)
+        region = args.region
         job = FetchJob(filter_id=fid, region=region, resolution=args.resolution)
         records = list(fetch_job(job, start_ms, end_ms, session))
 

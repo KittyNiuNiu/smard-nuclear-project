@@ -13,10 +13,9 @@
 select
     ts.filter_id,
     df.filter_name_en                   as price_area,
-    case ts.region
-        when 'DE' then 'Germany'
-        when 'FR' then 'France'
-        else ts.region
+    case ts.filter_id
+        when 4169 then 'Germany'
+        when 254 then 'France'
     end                                 as country,
     ts.date,
     ts.year,
