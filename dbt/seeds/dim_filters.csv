@@ -1,0 +1,16 @@
+filter_id,filter_name_de,filter_name_en,category
+1223,Braunkohle,Lignite,generation_fossil
+1224,Kernenergie,Nuclear,generation_nuclear
+1225,Wind Offshore,Wind Offshore,generation_renewable
+1226,Wasserkraft,Hydro,generation_renewable
+1227,Sonstige Konventionelle,Other Conventional,generation_fossil
+1228,Sonstige Erneuerbare,Other Renewable,generation_renewable
+4066,Biomasse,Biomass,generation_renewable
+4067,Wind Onshore,Wind Onshore,generation_renewable
+4068,Photovoltaik,Solar PV,generation_renewable
+4069,Steinkohle,Hard Coal,generation_fossil
+4070,Pumpspeicher,Pumped Storage,generation_other
+4071,Erdgas,Natural Gas,generation_fossil
+410,Stromverbrauch Gesamt,Total Consumption,consumption
+4169,Marktpreis DE/LU,Day-ahead Price DE/LU,price
+254,Marktpreis Frankreich,Day-ahead Price France,price

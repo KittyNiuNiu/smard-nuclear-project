@@ -16,19 +16,16 @@ with raw as (
         fetched_at,
 
         -- Convert Unix milliseconds → UTC timestamp
-        timestamp_millis(timestamp_ms)                  as ts_utc,
+        timestamp_millis(timestamp_ms)                                      as ts_utc,
 
-        -- Date in Berlin local time (CET/CEST).
-        -- SMARD timestamps are nominally UTC but the data represents
-        -- German local hours — convert so date aggregations make sense.
-        date(timestamp_millis(timestamp_ms), 'Europe/Berlin') as date_berlin
+        -- Date in Berlin local time (CET/CEST)
+        date(timestamp_millis(timestamp_ms), 'Europe/Berlin')               as date_berlin
 
     from {{ source('smard_raw', 'stg_smard_timeseries_raw') }}
-    where value is not null   -- SMARD emits nulls for hours with no data
+    where value is not null
 ),
 
--- Deduplicate: if the same (filter_id, region, timestamp_ms) was loaded multiple
--- times (e.g. backfill + incremental overlap), keep the latest fetch.
+-- Deduplicate: keep latest fetch for same (filter_id, region, timestamp_ms)
 deduped as (
     select *
     from raw
@@ -45,11 +42,10 @@ select
     timestamp_ms,
     ts_utc,
     date_berlin                     as date,
-    extract(year  from ts_utc)      as year,
-    extract(month from ts_utc)      as month,
-    extract(hour  from ts_utc)      as hour_of_day,
+    extract(year  from date_berlin) as year,
+    extract(month from date_berlin) as month,
 
-    -- MWh value (generation / consumption unit in SMARD is MWh per hour = average MW)
+    -- MWh value (for day resolution: MWh per day)
     value                           as mwh,
 
     ingestion_date,

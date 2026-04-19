@@ -124,8 +124,14 @@ def fetch_job(
     timestamps = get_indices(job, session)
     # Weekly buckets overlap the range if bucket_start <= end AND (bucket_start + 1 week) >= start
     # We fetch generously and let downstream filter; one week padding is fine.
-    one_week_ms = 7 * 24 * 60 * 60 * 1000
-    relevant = [t for t in timestamps if (t + one_week_ms) >= start_ms and t <= end_ms]
+    bucket_ms = {
+    "quarterhour": 7  * 24 * 60 * 60 * 1000,   # weekly
+    "hour":        7  * 24 * 60 * 60 * 1000,   # weekly
+    "day":         366 * 24 * 60 * 60 * 1000,  # yearly
+    "week":        366 * 24 * 60 * 60 * 1000,  # yearly
+    "month":       366 * 24 * 60 * 60 * 1000,  # yearly
+    }.get(job.resolution, 7 * 24 * 60 * 60 * 1000)
+    relevant = [t for t in timestamps if (t + bucket_ms) >= start_ms and t <= end_ms]
     log.info(
         f"filter={job.filter_id} region={job.region}: "
         f"{len(relevant)} weekly buckets to fetch "
@@ -227,7 +233,7 @@ def main() -> int:
 
         if args.dry_run:
             print(f"\nFilter {fid} ({ALL_FILTERS.get(fid)}) — first 3 of {len(records)} records:")
-            for r in records[:3]:
+            for r in records:
                 print(json.dumps(r, indent=2))
             continue
 

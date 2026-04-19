@@ -23,3 +23,4 @@ dbt/.user.yml
 # Kestra
 kestra/data/
 kestra/logs/
+kestra/.env

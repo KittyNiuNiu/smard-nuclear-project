@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: fct_daily_generation
+    description: "Daily electricity generation by source for Germany. Partitioned by date, clustered by filter_id."
+    columns:
+      - name: filter_id
+        data_tests:
+          - not_null
+      - name: energy_source
+        data_tests:
+          - not_null
+      - name: date
+        data_tests:
+          - not_null
+      - name: mwh
+        data_tests:
+          - not_null
+      - name: phaseout_period
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['before', 'after']
+      - name: comparison_window
+        data_tests:
+          - accepted_values:
+              values: ['year_before', 'year_after', 'outside_comparison_window']
+
+  - name: fct_daily_prices_base
+    description: "Daily day-ahead wholesale prices for Germany and France."
+    columns:
+      - name: date
+        data_tests:
+          - not_null
+      - name: country
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['Germany', 'France']
+      - name: eur_per_mwh
+        data_tests:
+          - not_null
+
+  - name: fct_generation_mix_periods
+    description: "Average daily generation per source for 12-month windows before and after the phase-out. Primary model for Tile 1."
+    columns:
+      - name: energy_source
+        data_tests:
+          - not_null
+      - name: comparison_window
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['year_before', 'year_after']
+      - name: avg_gwh_per_day
+        data_tests:
+          - not_null
+
+  - name: fct_daily_prices
+    description: "Daily average prices for Germany and France with DE-FR spread. Primary model for Tile 2."
+    columns:
+      - name: date
+        data_tests:
+          - not_null
+          - unique
+      - name: de_avg_price_eur_mwh
+        data_tests:
+          - not_null
+      - name: fr_avg_price_eur_mwh
+        data_tests:
+          - not_null
+
+seeds:
+  - name: dim_filters
+    description: "Reference table mapping SMARD numeric filter IDs to human-readable names and categories."
+    columns:
+      - name: filter_id
+        data_tests:
+          - not_null
+          - unique
+      - name: filter_name_en
+        data_tests:
+          - not_null
+      - name: category
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['generation_fossil', 'generation_nuclear', 'generation_renewable', 'generation_other', 'consumption', 'price']

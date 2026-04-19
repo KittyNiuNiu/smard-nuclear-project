@@ -1,0 +1,25 @@
+version: 2
+
+sources:
+  - name: smard_raw
+    description: "Raw SMARD timeseries data loaded by Kestra from GCS"
+    database: "{{ env_var('DBT_PROJECT_ID', var('gcp_project', target.project)) }}"
+    schema: smard
+    tables:
+      - name: stg_smard_timeseries_raw
+        description: "Partitioned raw table. One row per (filter_id, region, timestamp_ms). May contain duplicates across loads — deduplicated in staging layer."
+        columns:
+          - name: filter_id
+            description: "SMARD filter code (e.g. 1224 = nuclear)"
+          - name: region
+            description: "Region code: DE, FR, AT"
+          - name: resolution
+            description: "Temporal resolution: hour"
+          - name: timestamp_ms
+            description: "Unix timestamp in milliseconds (UTC)"
+          - name: value
+            description: "Generated MWh (generation/consumption) or EUR/MWh (price). NULL means no data for that hour."
+          - name: ingestion_date
+            description: "Date this row was written to BigQuery (for partition pruning)"
+          - name: fetched_at
+            description: "Timestamp when the API call was made"
