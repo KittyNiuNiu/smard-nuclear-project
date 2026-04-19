@@ -1,22 +1,21 @@
-id: smard_backfill
+id: smard_daily
 namespace: smard.nuclear
 
 description: |
-  One-shot backfill of SMARD electricity data from 2022-01-01 to today.
-  Fetches generation (by source), consumption, and wholesale prices (DE + FR)
-  → writes NDJSON to GCS → loads into BigQuery staging table.
-  Run this ONCE after infrastructure is provisioned.
+  Daily incremental load of SMARD electricity data.
+  Fetches yesterday's data for all configured filters → GCS → BigQuery → dbt.
+  Scheduled at 06:00 UTC every day (SMARD data lags ~1 day).
+
+triggers:
+  - id: daily_schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 6 * * *"
 
 inputs:
-  - id: start_date
+  - id: run_date
     type: STRING
-    defaults: "2022-01-01"
-    description: "Backfill start date (inclusive, YYYY-MM-DD)"
-
-  - id: end_date
-    type: STRING
-    defaults: "2024-12-31"
-    description: "Backfill end date (inclusive, YYYY-MM-DD)"
+    defaults: "{{ now() | dateAdd(-1, 'DAYS') | date('yyyy-MM-dd') }}"
+    description: "Date to fetch (default: yesterday)"
 
   - id: gcp_project
     type: STRING
@@ -24,12 +23,11 @@ inputs:
 
   - id: gcs_bucket
     type: STRING
-    description: "Target GCS bucket name (e.g. smard-raw-<project>)"
+    description: "Target GCS bucket name"
 
   - id: bq_dataset
     type: STRING
     defaults: "smard"
-    description: "BigQuery dataset name"
 
 variables:
   raw_table: "{{ inputs.bq_dataset }}.stg_smard_timeseries_raw"
@@ -37,72 +35,68 @@ variables:
 tasks:
   - id: fetch_and_upload
     type: io.kestra.plugin.scripts.python.Script
-    description: "Fetch SMARD API data for all configured filters and upload to GCS"
+    description: "Fetch yesterday's data and upload to GCS"
     beforeCommands:
       - pip install requests google-cloud-storage --quiet
     env:
-      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/sa-key.json"
       GCS_BUCKET: "{{ inputs.gcs_bucket }}"
       GCP_PROJECT: "{{ inputs.gcp_project }}"
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/sa-key.json"
     namespaceFiles:
       enabled: true
     script: |
-      import os, json
-      # Write SA key from KV store to filesystem
       sa_key = """{{ kv('GCP_SA_KEY') }}"""
       with open("/tmp/sa-key.json", "w") as f:
           f.write(sa_key)
-
-      # Import and run the ingestion script
       import subprocess, sys
-      result = subprocess.run([
-          sys.executable,
-          "ingestion/fetch_smard.py",
+      subprocess.run([
+          sys.executable, "fetch_smard.py",
           "--all-filters",
-          "--start", "{{ inputs.start_date }}",
-          "--end", "{{ inputs.end_date }}",
+          "--start", "{{ inputs.run_date }}",
+          "--end",   "{{ inputs.run_date }}",
       ], check=True)
 
   - id: load_to_bigquery
     type: io.kestra.plugin.gcp.bigquery.Query
-    description: "Load all NDJSON files from GCS into staging table (external query)"
+    description: "Append today's GCS files into staging table (merge to deduplicate)"
     projectId: "{{ inputs.gcp_project }}"
     serviceAccount: "{{ kv('GCP_SA_KEY') }}"
     location: "europe-west3"
     sql: |
-      LOAD DATA INTO `{{ inputs.gcp_project }}.{{ render(vars.raw_table) }}`
-      FROM FILES (
-        format = 'JSON',
-        uris = ['gs://{{ inputs.gcs_bucket }}/raw/filter=*/region=*/resolution=*/dt=*/*.jsonl']
+      -- Merge prevents duplicates if flow reruns on same date
+      MERGE `{{ inputs.gcp_project }}.{{ render(vars.raw_table) }}` AS target
+      USING (
+        SELECT *
+        FROM EXTERNAL_QUERY(
+          'projects/{{ inputs.gcp_project }}/locations/europe-west3/connections/smard-gcs',
+          '''SELECT * FROM READ_FILES(
+            'gs://{{ inputs.gcs_bucket }}/raw/filter=*/region=*/resolution=*/dt={{ inputs.run_date }}/*.jsonl',
+            format => 'JSON'
+          )'''
+        )
+      ) AS source
+      ON  target.filter_id    = source.filter_id
+      AND target.region       = source.region
+      AND target.timestamp_ms = source.timestamp_ms
+      WHEN NOT MATCHED THEN INSERT VALUES (
+        source.filter_id, source.region, source.resolution,
+        source.timestamp_ms, source.value, source.ingestion_date, source.fetched_at
       );
-
-  - id: verify_row_counts
-    type: io.kestra.plugin.gcp.bigquery.Query
-    description: "Sanity check — row counts by filter"
-    projectId: "{{ inputs.gcp_project }}"
-    serviceAccount: "{{ kv('GCP_SA_KEY') }}"
-    location: "europe-west3"
-    fetchType: STORE
-    sql: |
-      SELECT filter_id, region, COUNT(*) AS row_count
-      FROM `{{ inputs.gcp_project }}.{{ render(vars.raw_table) }}`
-      GROUP BY filter_id, region
-      ORDER BY filter_id, region;
 
   - id: trigger_dbt_cloud
     type: io.kestra.plugin.core.http.Request
-    description: "Trigger the dbt Cloud job (deps + seed + run + test)"
+    description: "Trigger the dbt Cloud incremental job"
     uri: "https://cloud.getdbt.com/api/v2/accounts/{{ kv('DBT_CLOUD_ACCOUNT_ID') }}/jobs/{{ kv('DBT_CLOUD_JOB_ID') }}/run/"
     method: POST
     headers:
       Authorization: "Token {{ kv('DBT_CLOUD_TOKEN') }}"
       Content-Type: "application/json"
     body: |
-      {"cause": "Triggered by Kestra smard_backfill — {{ execution.id }}"}
+      {"cause": "Triggered by Kestra smard_daily — {{ inputs.run_date }}"}
 
   - id: wait_for_dbt_cloud
     type: io.kestra.plugin.scripts.python.Script
-    description: "Poll dbt Cloud every 30s until the job finishes (success or error)"
+    description: "Poll dbt Cloud until the job finishes — fail the flow if dbt fails"
     beforeCommands:
       - pip install requests --quiet
     script: |
@@ -118,8 +112,6 @@ tasks:
       headers = {"Authorization": f"Token {token}"}
       url = f"https://cloud.getdbt.com/api/v2/accounts/{account_id}/runs/{run_id}/"
 
-      # Poll every 30s, timeout after 30 minutes
-      # Status codes: 1=Queued, 2=Starting, 3=Running, 10=Success, 20=Error, 30=Cancelled
       for attempt in range(60):
           time.sleep(30)
           resp = requests.get(url, headers=headers, timeout=15)
@@ -132,3 +124,9 @@ tasks:
               break
           elif status in (20, 30):
               raise RuntimeError(f"❌ dbt Cloud job failed: {label}")
+
+errors:
+  - id: notify_on_failure
+    type: io.kestra.plugin.core.log.Log
+    message: "❌ smard_daily FAILED for run_date={{ inputs.run_date }}. Check task logs above."
+    level: ERROR

@@ -12,7 +12,7 @@ On **April 15, 2023**, Germany shut down its last three nuclear reactors (Isar 2
 1. **How did the electricity generation mix shift?** Specifically, which sources (lignite, natural gas, renewables) replaced the ~33 TWh of annual nuclear output?
 2. **How did wholesale electricity prices change relative to France?** France remained heavily nuclear-dependent, providing a natural comparison baseline.
 
-The pipeline ingests hourly electricity market data from SMARD (Bundesnetzagentur's official transparency platform), which sources data from ENTSO-E and covers 2015 to present. The dashboard shows a clear before/after comparison centered on the April 15, 2023 cutoff.
+The pipeline ingests dailiy electricity market data from SMARD (Bundesnetzagentur's official transparency platform), which sources data from ENTSO-E and covers 2015 to present. The dashboard shows a clear before/after comparison centered on the April 15, 2023 cutoff.
 
 **Data source**: [SMARD API](https://smard.api.bund.dev/) — free, no authentication, CC BY 4.0 license. Attribution: *Bundesnetzagentur | SMARD.de*.
 

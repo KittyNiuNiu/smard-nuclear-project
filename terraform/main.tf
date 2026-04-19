@@ -55,7 +55,7 @@ resource "google_bigquery_dataset" "smard" {
   }
 }
 
-# Raw/staging table — created empty; Kestra's load job appends into it
+# Raw/staging table for SMARD time series data
 resource "google_bigquery_table" "stg_smard_timeseries" {
   dataset_id          = google_bigquery_dataset.smard.dataset_id
   table_id            = "stg_smard_timeseries_raw"

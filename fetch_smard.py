@@ -1,7 +1,7 @@
 """
 SMARD API ingestion script.
 
-Fetches hourly timeseries data from the Bundesnetzagentur SMARD API
+Fetches dailiy timeseries data from the Bundesnetzagentur SMARD API
 and writes to GCS as newline-delimited JSON (NDJSON), one line per data point.
 
 The SMARD API has two endpoints:
@@ -20,8 +20,8 @@ Usage:
 
 Environment:
     GOOGLE_APPLICATION_CREDENTIALS  path to service account JSON
-    GCS_BUCKET                      target bucket name (required unless --local-only)
-    GCP_PROJECT                     project ID (required unless --local-only)
+    GCS_BUCKET                      target bucket name 
+    GCP_PROJECT                     project ID 
 """
 from __future__ import annotations
 
@@ -51,8 +51,7 @@ log = logging.getLogger("fetch_smard")
 
 SMARD_BASE = "https://www.smard.de/app"
 
-# All filter IDs we care about for the nuclear phase-out analysis.
-# See openapi.yaml from bundesAPI/smard-api for full list.
+
 GENERATION_FILTERS = {
     1223: "Braunkohle",           # Lignite
     1224: "Kernenergie",          # Nuclear
@@ -84,7 +83,7 @@ ALL_FILTERS = {**GENERATION_FILTERS, **CONSUMPTION_FILTERS, **PRICE_FILTERS}
 class FetchJob:
     filter_id: int
     region: str
-    resolution: str = "hour"
+    resolution: str = "day"
 
 
 def get_indices(job: FetchJob, session: requests.Session) -> list[int]:
@@ -188,7 +187,7 @@ def main() -> int:
     p.add_argument("--filter", type=int, help="Single filter ID to fetch")
     p.add_argument("--all-filters", action="store_true", help="Fetch all configured filters")
     p.add_argument("--region", default="DE", help="Region code (default: DE)")
-    p.add_argument("--resolution", default="hour", choices=["hour", "quarterhour", "day"])
+    p.add_argument("--resolution", default="day", choices=["hour", "quarterhour", "day"])
     p.add_argument("--start", required=True, help="Start date YYYY-MM-DD (inclusive)")
     p.add_argument("--end", required=True, help="End date YYYY-MM-DD (inclusive)")
     p.add_argument("--local-dir", default="./data", help="Local working directory for NDJSON files")
