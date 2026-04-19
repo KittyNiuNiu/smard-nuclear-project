@@ -23,7 +23,7 @@ models:
 
 seeds:
   smard_nuclear:
-    +schema: seeds
+    +schema: smard
 
 vars:
   nuclear_phaseout_date: "2023-04-15"
