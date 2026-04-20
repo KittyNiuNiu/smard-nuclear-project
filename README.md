@@ -51,6 +51,41 @@ The pipeline runs in two phases:
 2. **`load_to_bigquery`** — Kestra loads GCS files → BigQuery staging table
 3. **`trigger_dbt_cloud`** — HTTP request triggers dbt Cloud job (seed → run → build)
 
+![kestra flow](docs/kestra_flow.png)
+
+---
+
+## Data Warehouse Design
+
+All fact tables are **partitioned by `date` (DAY)** and **clustered by `filter_id`**.
+
+Partitioning by date makes sense because all dashboard queries filter on date ranges 
+(e.g. "year before vs after the phase-out"). BigQuery only scans the relevant 
+partitions instead of the full table, reducing cost and query time.
+
+Clustering by `filter_id` speeds up GROUP BY queries on energy source — both 
+dashboard tiles aggregate by energy source, and clustering co-locates rows of 
+the same source within each partition.
+
+---
+
+## Transformations (dbt)
+
+Transformations are defined in dbt Cloud in two layers:
+
+**Staging** (`stg_smard_timeseries`) — converts raw Unix timestamps to proper dates 
+with Berlin timezone, deduplicates rows, and filters nulls.
+
+**Marts** — four fact tables built on top of staging:
+- `fct_daily_generation` — adds energy source names, phase-out period labels and 
+  a symmetric 12-month comparison window for before/after analysis
+- `fct_daily_prices_base` — filters to price data, derives country from filter_id
+- `fct_generation_mix_periods` — aggregates to average GWh/day per source per 
+  period with % share (Tile 1)
+- `fct_daily_prices` — pivots Germany/France prices side by side, adds 30-day 
+  rolling average and DE-FR spread (Tile 2)
+
+![dbt Lineage](docs/dbt_lineage.png)
 ---
 
 ## Reproducibility
@@ -100,7 +135,7 @@ python fetch_smard.py --all-filters --resolution day --start 2022-01-01 --end 20
 # - Create free account at cloud.getdbt.com
 # - Connect BigQuery (region: europe-west3)
 # - Connect this GitHub repo (subdirectory: dbt)
-# - Create job with commands: dbt seed, dbt run, dbt build
+# - Create job with commands: dbt build
 # - Run job once to verify all 5 models pass
 
 # 7. Start Kestra
@@ -124,7 +159,7 @@ docker compose up -d
 ```
 
 ## Dashboard
-![Dashboard](/dashboard.png)
+![Dashboard](docs/dashboard.png)
 
 It can also be view [here](https://datastudio.google.com/reporting/eab150bb-9346-4676-bd8d-b797288a6248)
 
@@ -149,6 +184,10 @@ It can also be view [here](https://datastudio.google.com/reporting/eab150bb-9346
 weather patterns, and demand changes also influence both generation mix and prices.
 
 
+## Credits
+- Data: [Bundesnetzagentur | SMARD.de](https://www.smard.de/) (CC BY 4.0)
+- API wrapper inspiration: [bundesAPI/smard-api](https://github.com/bundesAPI/smard-api)
+- Built as the final project for [DataTalksClub Data Engineering Zoomcamp 2026](https://github.com/DataTalksClub/data-engineering-zoomcamp)
 
 
 
