@@ -121,6 +121,7 @@ docker compose up -d
 - BigQuery `smard_marts.fct_daily_prices_base` — partitioned by date
 - BigQuery `smard_marts.fct_generation_mix_periods` — 26 rows (Tile 1 source)
 - BigQuery `smard_marts.fct_daily_prices` — 1,569 rows (Tile 2 source)
+```
 
 ## Dashboard
 ![Dashboard](/dashboard.png)
