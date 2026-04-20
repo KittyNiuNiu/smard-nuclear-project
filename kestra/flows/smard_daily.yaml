@@ -19,24 +19,20 @@ inputs:
 
 tasks:
   - id: fetch_and_upload
-    type: io.kestra.plugin.scripts.python.Script
+    type: io.kestra.plugin.scripts.python.Commands
     description: "Fetch yesterday's SMARD data and upload to GCS"
     beforeCommands:
       - pip install requests google-cloud-storage --quiet
+      - printf '%s' "$GCP_SA_KEY_CONTENT" > /tmp/gcp-sa-key.json
     env:
       GCS_BUCKET: "smard-raw-my-de-course-2026"
       GCP_PROJECT: "my-de-course-2026"
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/gcp-sa-key.json"
+      GCP_SA_KEY_CONTENT: "{{ kv('GCP_SA_KEY') }}"
     namespaceFiles:
       enabled: true
-    script: |
-      import subprocess, sys
-      subprocess.run([
-          sys.executable, "fetch_smard.py",
-          "--all-filters",
-          "--resolution", "day",
-          "--start", "{{ inputs.run_date }}",
-          "--end",   "{{ inputs.run_date }}",
-      ], check=True)
+    commands:
+      - python fetch_smard.py --all-filters --resolution day --start {{ inputs.run_date }} --end {{ inputs.run_date }}
 
   - id: debug_fetch_and_upload_output
     type: io.kestra.plugin.core.debug.Return
@@ -95,7 +91,7 @@ tasks:
   - id: trigger_dbt_cloud
     type: io.kestra.plugin.core.http.Request
     description: "Trigger dbt Cloud job"
-    uri: "https://cloud.getdbt.com/api/v2/accounts/{{ kv('DBT_CLOUD_ACCOUNT_ID') }}/jobs/{{ kv('DBT_CLOUD_JOB_ID') }}/run/"
+    uri: "https://xn256.us1.dbt.com/api/v2/accounts/{{ kv('DBT_CLOUD_ACCOUNT_ID') }}/jobs/{{ kv('DBT_CLOUD_JOB_ID') }}/run/"
     method: POST
     headers:
       Authorization: "Token {{ kv('DBT_CLOUD_TOKEN') }}"

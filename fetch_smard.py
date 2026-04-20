@@ -244,8 +244,7 @@ def main() -> int:
         total_records += len(records)
 
         if not args.local_only:
-            today = date.today().isoformat()
-            blob_path = f"raw/filter={fid}/region={region}/resolution={args.resolution}/dt={today}/{args.start}_{args.end}.jsonl"
+            blob_path = f"raw/filter={fid}/region={region}/resolution={args.resolution}/dt={args.start}/{args.start}_{args.end}.jsonl"
             upload_to_gcs(bucket_name, blob_path, local_path)
 
     log.info(f"Done. Total records: {total_records}")

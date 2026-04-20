@@ -2,8 +2,6 @@
 
 **Data Engineering Zoomcamp 2026 — Final Project**
 
-> 🔗 **Live Dashboard**: [Looker Studio link — ADD YOUR LINK HERE]
-> 🎥 **Demo video**: [Loom/YouTube link — ADD YOUR LINK HERE]
 
 ## Problem Statement
 
@@ -12,9 +10,9 @@ On **April 15, 2023**, Germany shut down its last three nuclear reactors (Isar 2
 1. **How did the electricity generation mix shift?** Specifically, which sources (lignite, natural gas, renewables) replaced the ~33 TWh of annual nuclear output?
 2. **How did wholesale electricity prices change relative to France?** France remained heavily nuclear-dependent, providing a natural comparison baseline.
 
-The pipeline ingests dailiy electricity market data from SMARD (Bundesnetzagentur's official transparency platform), which sources data from ENTSO-E and covers 2015 to present. The dashboard shows a clear before/after comparison centered on the April 15, 2023 cutoff.
+The pipeline ingests daily (after a one time ingestion of historical data) electricity market data from SMARD (Bundesnetzagentur's official transparency platform), which sources data from ENTSO-E and covers 2015 to present. The dashboard shows a clear before/after comparison centered on the April 15, 2023 cutoff.
 
-**Data source**: [SMARD API](https://smard.api.bund.dev/) — free, no authentication, CC BY 4.0 license. Attribution: *Bundesnetzagentur | SMARD.de*.
+**Data source**: [SMARD API](https://smard.api.bund.dev/). Attribution: *Bundesnetzagentur | SMARD.de*.
 
 ## Architecture
 
@@ -25,127 +23,131 @@ The pipeline ingests dailiy electricity market data from SMARD (Bundesnetzagentu
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
                            ▲                                        ▲
                            │                                        │
-                           └────── Kestra orchestrates the DAG ─────┘
+                           └Kestra orchestrates the daily ingestion─┘
 ```
 
-### Technology choices
-| Layer | Tool | Rationale |
-|---|---|---|
-| Cloud | GCP (`europe-west3`) | Data sovereignty (German data, EU region) |
-| IaC | Terraform | Reproducible infrastructure; `terraform apply` brings everything up |
-| Orchestration | Kestra (self-hosted) | YAML-based DAG, 5+ distinct tasks, works offline for graders |
-| Data Lake | GCS | Partitioned by ingestion date, raw JSON preserved for reprocessing |
-| Warehouse | BigQuery | Serverless, free tier covers this workload, native dbt support |
-| Transform | dbt Core (BigQuery adapter) | Industry standard, shows lineage, enables testing |
-| Dashboard | Looker Studio | Free, native BigQuery integration, public sharing |
+### Technology 
+| Layer | Tool | 
+|---|---|
+| Cloud | GCP (`europe-west3`) | 
+| IaC | Terraform | 
+| Orchestration | Kestra (self-hosted) | 
+| Data Lake | GCS | 
+| Warehouse | BigQuery | 
+| Transform | dbt Cloud | 
+| Dashboard | Looker Studio | 
 
-## Warehouse Design (Partitioning & Clustering)
-
-The main fact table `fct_hourly_generation` is:
-
-- **Partitioned by `date` (DAY)** — all dashboard queries filter on date ranges (e.g., "year before phase-out vs year after"). Partition pruning reduces scanned bytes from ~50 MB per query to ~1 MB, cutting cost and latency.
-- **Clustered by `filter_id`** — queries group by energy source (nuclear, wind, solar, etc.). Clustering co-locates rows of the same source within each partition, further reducing scan cost on GROUP BY queries.
-
-For `fct_nuclear_phaseout_daily` (aggregated down to daily grain): partitioned by `date` only, since the table is small (<10k rows) and always fully scanned by the dashboard.
 
 ## Pipeline Steps
 
-The Kestra flow `smard_pipeline` runs these steps in sequence:
+The pipeline runs in two phases:
 
-1. **`fetch_smard`** — Python task queries SMARD API for each (filter_id, region) combination
-2. **`upload_to_gcs`** — writes raw NDJSON to `gs://smard-raw-{project}/raw/filter={id}/dt={date}.jsonl`
-3. **`load_to_bigquery`** — BigQuery load job appends into `stg_smard_timeseries`
-4. **`dbt_run`** — runs staging → marts transformations
-5. **`dbt_test`** — runs data quality tests (not_null, unique, accepted_values)
+**One-time backfill** (run manually):
+1. **`fetch_smard.py`** — Python script fetches SMARD API for all 15 filters → uploads NDJSON to GCS
+2. **BigQuery load** — load data manually from GCS into `stg_smard_timeseries_raw` via BigQuery UI
 
-Scheduled to run daily at 06:00 UTC via a Kestra cron trigger. Backfill (2022-01-01 → today) is a separate one-shot flow (`smard_backfill.yaml`).
+**Daily batch** (automated via Kestra, scheduled at 12:00 UTC):
+1. **`fetch_and_upload`** — Python task fetches yesterday's data → GCS
+2. **`load_to_bigquery`** — Kestra loads GCS files → BigQuery staging table
+3. **`trigger_dbt_cloud`** — HTTP request triggers dbt Cloud job (seed → run → build)
 
-## Reproducibility — How to Run
+---
+
+## Reproducibility
 
 ### Prerequisites
 - Google Cloud account with billing enabled
-- `gcloud` CLI installed and authenticated
 - Docker + Docker Compose
 - Python 3.10+
 - Terraform ≥ 1.5
-- A service account JSON key with roles: `BigQuery Admin`, `Storage Admin` (create via GCP Console)
+- Service account JSON key with roles: `BigQuery Admin`, `Storage Admin`
+- dbt Cloud account (free Developer plan)
 
 ### Step-by-step
 
 ```bash
-# 1. Clone and configure
+# 1. Clone repo
 git clone <your-repo-url>
 cd smard-nuclear-project
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars
-# Edit terraform.tfvars with your GCP project ID
-
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/sa-key.json
 
 # 2. Provision infrastructure
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+# Edit terraform.tfvars — set project_id = "your-gcp-project-id"
 cd terraform
 terraform init
 terraform apply
 cd ..
 
-# 3. Start Kestra locally
-docker compose -f kestra/docker-compose.yml up -d
+# 3. Set up credentials
+mkdir -p ~/.gcp
+cp /path/to/your/sa-key.json ~/.gcp/credentials.json
+export GOOGLE_APPLICATION_CREDENTIALS=~/.gcp/credentials.json
+
+# 4. Run one-time backfill
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests google-cloud-storage
+
+export GCS_BUCKET=smard-raw-your-project-id
+python fetch_smard.py --all-filters --resolution day --start 2022-01-01 --end 2026-04-19
+
+# 5. Load GCS → BigQuery (run in BigQuery UI query editor)
+# LOAD DATA INTO `your-project.smard.stg_smard_timeseries_raw`
+# FROM FILES (format='JSON', uris=['gs://smard-raw-your-project/raw/filter=.../...jsonl'])
+# See docs/architecture.md for exact URIs
+
+# 6. Set up dbt Cloud
+# - Create free account at cloud.getdbt.com
+# - Connect BigQuery (region: europe-west3)
+# - Connect this GitHub repo (subdirectory: dbt)
+# - Create job with commands: dbt seed, dbt run, dbt build
+# - Run job once to verify all 5 models pass
+
+# 7. Start Kestra
+cd kestra
+docker compose up -d
 # Open http://localhost:8080
+# Add KV store keys: DBT_CLOUD_ACCOUNT_ID, DBT_CLOUD_JOB_ID, DBT_CLOUD_TOKEN
+# Upload fetch_smard.py to Namespace Files (smard.nuclear)
+# Import kestra/flows/smard_daily.yaml
+# Daily schedule activates automatically at 12:00 UTC
 
-# 4. Load SA key into Kestra KV store (Kestra UI → Namespaces → KV Store)
-# Key: GCP_SA_KEY, Value: contents of your sa-key.json
-
-# 5. Import and run the backfill flow
-# In Kestra UI: Flows → Create → paste kestra/flows/smard_backfill.yaml
-# Click "Execute"
-
-# 6. Verify data in BigQuery
-bq query --use_legacy_sql=false \
-  'SELECT filter_id, COUNT(*) AS rows FROM `smard.stg_smard_timeseries` GROUP BY filter_id'
-
-# 7. Run dbt manually (first time; afterwards Kestra handles it)
-cd dbt
-cp profiles.yml.example ~/.dbt/profiles.yml
-# Edit ~/.dbt/profiles.yml with your project ID
-dbt deps
-dbt seed
-dbt run
-dbt test
-
-# 8. View dashboard
-# Open the Looker Studio link at the top of this README
-```
 
 ### Expected outputs
-- GCS bucket `smard-raw-{project}` contains partitioned NDJSON files
-- BigQuery dataset `smard` contains: `stg_smard_timeseries`, `dim_filters`, `fct_hourly_generation`, `fct_hourly_prices`, `fct_generation_mix_periods`, `fct_nuclear_phaseout_daily`
-- All `fct_*` tables are partitioned and clustered (verify in BigQuery console → table details)
+- GCS bucket `smard-raw-{project}` — NDJSON files partitioned by filter and date
+- BigQuery `smard.stg_smard_timeseries_raw` — raw partitioned table (~21,500 rows)
+- BigQuery `smard_staging.stg_smard_timeseries` — cleaned view
+- BigQuery `smard_marts.fct_daily_generation` — partitioned by date, clustered by filter_id
+- BigQuery `smard_marts.fct_daily_prices_base` — partitioned by date
+- BigQuery `smard_marts.fct_generation_mix_periods` — 26 rows (Tile 1 source)
+- BigQuery `smard_marts.fct_daily_prices` — 1,569 rows (Tile 2 source)
 
-## Evaluation Rubric Mapping
+## Dashboard
+![Dashboard](/dashboard.png)
 
-| Criterion | How this project scores |
-|---|---|
-| Problem description | Specific question + dataset + timeframe stated above |
-| Cloud | GCP + Terraform IaC (`terraform/` folder) |
-| Batch orchestration | 5-task Kestra DAG with clear separation of concerns |
-| Data warehouse | Partitioned by date, clustered by filter_id, rationale above |
-| Transformations | dbt Core with staging + marts layers, 5 models, `ref()` lineage |
-| Dashboard | 2 Looker Studio tiles, link above |
-| Reproducibility | This README + `terraform apply` + one Kestra flow execution |
+It can also be view [here](https://datastudio.google.com/reporting/eab150bb-9346-4676-bd8d-b797288a6248)
 
-## Findings (fill in after you run the pipeline)
 
-*TODO after running: summarize the actual before/after shift you observe. Example bullets:*
-- Nuclear share dropped from ~X% to 0% (by design)
-- [Dominant replacement source] picked up the slack
-- Wholesale prices in Germany diverged/converged with France by X €/MWh
-- Anything surprising you found in the data
+## Findings
 
-## Limitations & Future Work
-- The SMARD API uses weekly-bucketed timestamps, requiring ~104 calls for 2 years of backfill — parallelization via Kestra subflows could speed this up.
-- Prices are day-ahead market prices only; intraday/balancing market prices are not included.
-- The "phase-out effect" cannot be fully isolated from confounding factors (gas crisis, weather, demand changes) — this dashboard shows correlation, not causation.
+**Generation mix (Tile 1):**
+- Nuclear generation dropped from ~81 GWh/day to almost 0 after April 15, 2023
+  as expected following the Atomausstieg.
+- Contrary to fears, lignite and hard coal also declined in the year after
+  the phase-out — suggesting renewables absorbed more of the load than fossil fuels.
+- Wind and solar grew to compensate, consistent with Germany's Energiewende targets.
 
-## Credits
-- Data: [Bundesnetzagentur | SMARD.de](https://www.smard.de/) (CC BY 4.0)
-- API wrapper inspiration: [bundesAPI/smard-api](https://github.com/bundesAPI/smard-api)
-- Built as the final project for [DataTalksClub Data Engineering Zoomcamp 2026](https://github.com/DataTalksClub/data-engineering-zoomcamp)
+**Wholesale prices (Tile 2):**
+- Before the phase-out, German and French day-ahead prices tracked closely,
+  reflecting their interconnected grid. Both markets are affected by the gas crisis in 2022 by showing a peak of prices.
+- After April 2023, Germany consistently trades at a premium over France.
+- This divergence likely reflects France's continued reliance on cheap nuclear
+  baseload, while Germany depends more on variable renewables and gas peakers.
+
+**Caveat:** These findings show correlation, not causation. The 2022 gas crisis,
+weather patterns, and demand changes also influence both generation mix and prices.
+
+
+
+
+
