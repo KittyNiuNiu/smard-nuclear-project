@@ -28,4 +28,4 @@ seeds:
 vars:
   nuclear_phaseout_date: "2023-04-15"
   analysis_start_date:   "2022-01-01"
-  analysis_end_date:     "2026-04-19"
+  analysis_end_date:     "2026-12-31"
