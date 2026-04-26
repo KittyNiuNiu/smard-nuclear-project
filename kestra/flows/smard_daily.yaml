@@ -4,7 +4,7 @@ namespace: smard.nuclear
 description: |
   Daily incremental load of SMARD electricity data.
   Fetches yesterday's data → GCS → BigQuery → dbt Cloud.
-  Scheduled at 06:00 UTC every day.
+  Scheduled at 12:00 UTC every day.
 
 triggers:
   - id: daily_schedule
@@ -19,11 +19,10 @@ inputs:
 
 tasks:
   - id: fetch_and_upload
-    type: io.kestra.plugin.scripts.python.Commands
+    type: io.kestra.plugin.scripts.python.Script
     description: "Fetch yesterday's SMARD data and upload to GCS"
     beforeCommands:
       - pip install requests google-cloud-storage --quiet
-      - printf '%s' "$GCP_SA_KEY_CONTENT" > /tmp/gcp-sa-key.json
     env:
       GCS_BUCKET: "smard-raw-my-de-course-2026"
       GCP_PROJECT: "my-de-course-2026"
@@ -31,9 +30,19 @@ tasks:
       GCP_SA_KEY_CONTENT: "{{ kv('GCP_SA_KEY') }}"
     namespaceFiles:
       enabled: true
-    commands:
-      - python fetch_smard.py --all-filters --resolution day --start {{ inputs.run_date }} --end {{ inputs.run_date }}
+    script: |
+      import subprocess, sys, os
+      with open("/tmp/gcp-sa-key.json", "w") as f:
+          f.write(os.environ["GCP_SA_KEY_CONTENT"])
 
+      subprocess.run([
+          sys.executable, "fetch_smard.py",
+          "--all-filters",
+          "--resolution", "day",
+          "--start", "{{ inputs.run_date }}",
+          "--end",   "{{ inputs.run_date }}",
+      ], check=True)
+      
   - id: debug_fetch_and_upload_output
     type: io.kestra.plugin.core.debug.Return
     format: "Finished fetch_and_upload for date: {{ inputs.run_date }}"
