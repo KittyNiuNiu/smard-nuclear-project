@@ -14,10 +14,14 @@ triggers:
 inputs:
   - id: run_date
     type: STRING
-    defaults: "{{ now() | dateAdd(-1, 'DAYS') | date('yyyy-MM-dd') }}"
-    description: "Date to fetch (default: yesterday)"
+    required: false
+    description: "Date to fetch (yyyy-MM-dd). Leave empty for yesterday."
 
 tasks:
+  - id: resolve_date
+    type: io.kestra.plugin.core.debug.Return
+    format: "{{ inputs.run_date ?? (now() | dateAdd(-1, 'DAYS') | date('yyyy-MM-dd')) }}"
+
   - id: fetch_and_upload
     type: io.kestra.plugin.scripts.python.Script
     description: "Fetch yesterday's SMARD data and upload to GCS"
@@ -39,13 +43,13 @@ tasks:
           sys.executable, "fetch_smard.py",
           "--all-filters",
           "--resolution", "day",
-          "--start", "{{ inputs.run_date }}",
-          "--end",   "{{ inputs.run_date }}",
+          "--start", "{{ outputs.resolve_date.value }}",
+          "--end",   "{{ outputs.resolve_date.value }}",
       ], check=True)
-      
+
   - id: debug_fetch_and_upload_output
     type: io.kestra.plugin.core.debug.Return
-    format: "Finished fetch_and_upload for date: {{ inputs.run_date }}"
+    format: "Finished fetch_and_upload for date: {{ outputs.resolve_date.value }}"
 
   - id: load_to_bigquery
     type: io.kestra.plugin.gcp.bigquery.LoadFromGcs
@@ -54,22 +58,21 @@ tasks:
     location: "europe-west3"
     destinationTable: "my-de-course-2026.smard.stg_smard_timeseries_raw"
     format: JSON
-    from: # Corrected from 'sourceUris' to 'from' as per schema
-      - "gs://smard-raw-my-de-course-2026/raw/filter=254/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=410/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1223/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1224/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1225/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1226/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1227/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=1228/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4066/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4067/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4068/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4069/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4070/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4071/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
-      - "gs://smard-raw-my-de-course-2026/raw/filter=4169/region=DE/resolution=day/dt={{ inputs.run_date }}/{{ inputs.run_date }}_{{ inputs.run_date }}.jsonl"
+    from:
+      - "gs://smard-raw-my-de-course-2026/raw/filter=254/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=410/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=1223/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=1225/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=1226/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=1227/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=1228/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4066/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4067/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4068/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4069/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4070/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4071/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
+      - "gs://smard-raw-my-de-course-2026/raw/filter=4169/region=DE/resolution=day/dt={{ outputs.resolve_date.value }}/{{ outputs.resolve_date.value }}_{{ outputs.resolve_date.value }}.jsonl"
     writeDisposition: WRITE_APPEND
     autodetect: false
     schema:
@@ -106,7 +109,7 @@ tasks:
       Authorization: "Token {{ kv('DBT_CLOUD_TOKEN') }}"
       Content-Type: "application/json"
     body: |
-      {"cause": "Daily update {{ inputs.run_date }}"}
+      {"cause": "Daily update {{ outputs.resolve_date.value }}"}
 
   - id: debug_trigger_dbt_cloud_output
     type: io.kestra.plugin.core.debug.Return
@@ -118,5 +121,5 @@ tasks:
 errors:
   - id: notify_on_failure
     type: io.kestra.plugin.core.log.Log
-    message: "❌ smard_daily FAILED for {{ inputs.run_date }}. Execution ID: {{ execution.id }}"
+    message: "❌ smard_daily FAILED for {{ outputs.resolve_date.value }}. Execution ID: {{ execution.id }}"
     level: ERROR
